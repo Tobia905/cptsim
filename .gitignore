@@ -64,3 +64,5 @@ cython_debug/
 *.csv
 *.xlsx
 *.parquet
+
+!data/SampleSuperstore.csv
