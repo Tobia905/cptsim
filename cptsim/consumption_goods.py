@@ -47,6 +47,11 @@ def kl_divergence(
 def truncated_sampling(dist, params, size, lower_bound, upper_bound) -> np.ndarray:
     lower_cdf = dist.cdf(lower_bound, *params)
     upper_cdf = dist.cdf(upper_bound, *params)
+
+    # Ensure CDF bounds are valid
+    if lower_cdf >= upper_cdf or not (0 <= lower_cdf <= 1) or not (0 <= upper_cdf <= 1):
+        raise ValueError(f"Invalid CDF bounds: lower_cdf={lower_cdf}, upper_cdf={upper_cdf}")
+    
     truncated_samples = dist.ppf(
         np.random.uniform(lower_cdf, upper_cdf, size), *params
     )
@@ -56,7 +61,7 @@ def truncated_sampling(dist, params, size, lower_bound, upper_bound) -> np.ndarr
 def fit_and_compare_distributions(
     data: ArrayLike, 
     lower_bound: int | float = 1, 
-    upper_bound: int | float = 800
+    upper_bound: int | float = 1000
 ) -> Dict[str, Union[np.ndarray, Tuple, float]]:
     """
     Fits Log-Normal, Gamma, Weibull, and Exponential distributions to the given data,
