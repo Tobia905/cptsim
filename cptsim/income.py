@@ -17,7 +17,7 @@ def _rescale_array(
     Rescales an array of values from the range [old_min, old_max]
     to the range [new_min, new_max].
     
-    Parameters:
+    Args:
         values (np.ndarray): Array of values to rescale.
         old_min (float): Minimum value of the old range.
         old_max (float): Maximum value of the old range.
@@ -42,7 +42,7 @@ def simulate_income(
     Simulates a left-skewed distribution for post-taxation monthly income
     with narrower density and less spread.
     
-    Parameters:
+    Args:
         n (int): Number of samples to generate.
         min_income (float): Minimum income value.
         max_income (float): Maximum income value.

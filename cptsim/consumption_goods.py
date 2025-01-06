@@ -17,14 +17,14 @@ def kl_divergence(
     """
     Computes the Kullback-Leibler (KL) divergence between two empirical distributions.
 
-    Parameters:
-        data_p (array-like): Samples from the first distribution (P).
-        data_q (array-like): Samples from the second distribution (Q).
+    Args:
+        data_p (ArrayLike): Samples from the first distribution (P).
+        data_q (ArrayLike): Samples from the second distribution (Q).
         bins (int): Number of bins for histogram-based density estimation.
         range (tuple): The range (min, max) for the histograms. If None, inferred from the data.
 
     Returns:
-        float: The KL divergence D(P || Q).
+        float: The KL divergence.
     """
     # Compute histograms (empirical PDFs)
     hist_p, bin_edges = np.histogram(data_p, bins=bins, range=range, density=True)
@@ -68,8 +68,8 @@ def fit_and_compare_distributions(
     generates samples (restricted between lower_bound and upper_bound), and compares 
     them using the Kolmogorov-Smirnov test.
     
-    Parameters:
-        data (array-like): The input data.
+    Args:
+        data (ArrayLike): The input data.
         lower_bound (float): Lower bound for the sampling.
         upper_bound (float): Upper bound for the sampling.
 
