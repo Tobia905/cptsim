@@ -12,7 +12,9 @@ To test the hypotesis, we developed an agent based simulation in which we simula
 
 ### 1. The Model ###
 
-The idea is straightforward: at time $t$, we generate $n$ agents and we assign them an income ($Y$) sampled from an heavy tailed Gamma distribution. Then, we let them buy $m$ consumption goods untill they reach $(1 - \gamma) \cdot Y$, where $\gamma$ is the saving rate, that we assume constant across individuals and equal to 0.20 (20%). We do this both for a "constant taxation" scenario - with a consumption tax always equal to 0.22 (22%) and for a "progressive taxation" one, where the taxation is a continuous "rescaled" sigmoid function of the individual income, defined as follows: $$\omega_i = \omega_{min} + \frac{\omega_{\text{max}} - \omega_{\text{min}}}{1 + e^{-k \cdot (Y - Y_{\text{mid}})}}$$
+The idea is straightforward: at time $t$, we generate $n$ agents and we assign them an income ($Y$) sampled from an heavy tailed Gamma distribution. Then, we let them buy $m$ consumption goods untill they reach $(1 - \gamma) \cdot Y$, where $\gamma$ is the saving rate, that we assume constant across individuals and equal to 0.20 (20%). We do this both for a "constant taxation" scenario - with a consumption tax always equal to 0.22 (22%) and for a "progressive taxation" one, where the taxation is a continuous "rescaled" sigmoid function of the individual income, defined as follows: 
+
+$$\omega_i = \omega_{min} + \frac{\omega_{\text{max}} - \omega_{\text{min}}}{1 + e^{-k \cdot (Y - Y_{\text{mid}})}}$$
 
 Where:
 - $\omega$: Tax rate
@@ -30,7 +32,9 @@ A scaled sigmoid function has some interesting properties that make it a good ca
 - Maximum and minimum values can be selected.
 - The progressive factor allows to consider different levels of steepness and, hence, progressivity.
 
-Then, we compare the two scenarios in terms of budget gathered by the Social Planner: if the progressive taxation is associated with an extra budget w.r.t. the constant one, at $t + 1$ this is redistributed to lower income individuals following a "left tail adjustment" strategy: we use exponential decay to assign the proportion of the total budget as a continuos function of the income: $$R_i = \frac{e^{-\lambda \cdot Y_i}}{\sum_{j} e^{-\lambda \cdot Y_j}} \cdot F$$
+Then, we compare the two scenarios in terms of budget gathered by the Social Planner: if the progressive taxation is associated with an extra budget w.r.t. the constant one, at $t + 1$ this is redistributed to lower income individuals following a "left tail adjustment" strategy: we use exponential decay to assign the proportion of the total budget as a continuos function of the income: 
+
+$$R_i = \frac{e^{-\lambda \cdot Y_i}}{\sum_{j} e^{-\lambda \cdot Y_j}} \cdot F$$
 
 Where:
 - $R_i$: Redistributed funds for individual $i$
@@ -46,7 +50,9 @@ The code for the taxation and redistribution functions can be found in **cptsim/
 
 At the end of the simulation we evaluate the redistribution under two different dimensions:
 
- - **Direct Income Redistribution**: we compare the pre and post redistribution income distributions and we compute the respective Lorenz curves and the gini indexes as follows: $$G = 1 - 2 \int_0^1 L(x)dx \approx \frac{2 \sum_{i=1}^n i x_i}{n \sum_{i=1}^n x_i} - \frac{n + 1}{n}$$
+ - **Direct Income Redistribution**: we compare the pre and post redistribution income distributions and we compute the respective Lorenz curves and the gini indexes as follows: 
+ 
+    $$G = 1 - 2 \int_0^1 L(x)dx \approx \frac{2 \sum_{i=1}^n i x_i}{n \sum_{i=1}^n x_i} - \frac{n + 1}{n}$$
 
     Where:
     - $L(x)$ is the Lorenz curve, which represents the cumulative share of income (or wealth) as a function of the cumulative share of the population.
