@@ -1,5 +1,4 @@
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.stats import gamma
@@ -39,8 +38,8 @@ def simulate_income(
     heavy_tail_factor: float = 1.2
 ) -> np.ndarray:
     """
-    Simulates a left-skewed distribution for post-taxation monthly income
-    with narrower density and less spread.
+    Simulates a left-skewed distribution for post-taxation 
+    monthly income.
     
     Args:
         n (int): Number of samples to generate.
