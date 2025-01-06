@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import numpy as np
 from numpy.typing import ArrayLike
 
@@ -48,3 +49,19 @@ def redistribute_funds(incomes: ArrayLike, total_funds: float, decay_rate: float
     redistributed_funds = total_funds * normalized_weights
 
     return redistributed_funds
+
+
+def plot_progressive_taxation(incomes: ArrayLike) -> None:
+    
+    for k in np.linspace(0.0003, 0.001, 7):
+        a, b = 0.15, 0.38
+        cons_tax = progressive_tax(incomes, a, b, 500, 15000, k=k)
+        plt.axhline(.22, color="r", zorder=2)
+        plt.plot(sorted(incomes), sorted(cons_tax), c="C0", zorder=1)
+        plt.legend(["Constant Tax", "Progressive Tax"])
+
+    plt.title("Progressive Consumption Tax for Different K Levels")
+    plt.xlabel("Post-Taxation Monthly Income")
+    plt.ylabel("Tax")
+    plt.grid(alpha=.3)
+    plt.show()
