@@ -53,8 +53,8 @@ def simulate_market(
             lower_bound=lower_bound, 
             upper_bound=upper_bound_
         )
-        while ea.available_income > good_price and ea.available_income > 1:
-            ea.buy_consumption_good(price=good_price)
+        ea.buy_consumption_good(price=good_price)
+        while ea.available_income > 1.5:
             upper_bound_ = (
                 upper_bound_ 
                 if ea.available_income > upper_bound_ 
@@ -65,9 +65,14 @@ def simulate_market(
                 prices_distribution["parameters"], 
                 size=1, 
                 lower_bound=lower_bound, 
-                upper_bound=upper_bound
+                upper_bound=upper_bound_
             )
-            gov_budget += ea.tax * good_price
+            if ea.available_income >= good_price:
+                ea.buy_consumption_good(price=good_price)
+                gov_budget += ea.tax * good_price
+
+            else:
+                break
 
         else:
             all_agents.append(ea)

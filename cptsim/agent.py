@@ -1,6 +1,7 @@
-from typing import List, Literal
+from typing import List, Literal, Optional
 
 import pandas as pd
+import numpy as np
 
 from cptsim.tax import progressive_tax, redistribute_funds
 
@@ -36,6 +37,7 @@ class EconomicAgent:
         self.bought_goods = 0
         self.paid_prices = []
         self.paid_taxes = []
+        self.transfers = []
         self.transfer_handling_strategy = transfer_handling_strategy
 
     def buy_consumption_good(self, price: float) -> None:
@@ -44,22 +46,36 @@ class EconomicAgent:
         self.paid_prices.append(price)
         self.paid_taxes.append(self.tax * price)
 
-    def reassing_new_income(self, new_income: int | float, transfer: int | float) -> None:
+    def reassing_new_income(self, new_income: int | float, transfer: Optional[int | float] = None) -> None:
         self.income = new_income
         self.handle_redistribution(transfer=transfer)
         self.available_income = self.income * (1 - self.saving_rate)
         self.savings += (self.income * self.saving_rate)
 
-    def handle_redistribution(self, transfer: int | float) -> None:
-        if (
-            self.income + transfer > self.income 
-            and 
-            self.transfer_handling_strategy == "save"
-        ):
-            self.savings += transfer
+    def handle_redistribution(self, transfer: Optional[int | float] = None) -> None:
+        if transfer:
+            self.transfers.append(transfer)
+            if (
+                self.income + transfer > self.income 
+                and 
+                self.transfer_handling_strategy == "save"
+            ):
+                self.savings += transfer
 
-        else:
-            self.income += transfer
+            else:
+                self.available_income += transfer
+
+    @property
+    def income_dynamic(self):
+        inc_dyn = []
+
+        if len(self.paid_prices) > 0:
+            starting_income = self.income - (self.saving_rate * self.income)
+            for price, tax in zip(self.paid_prices, self.paid_taxes):
+                starting_income -= (price + tax)
+                inc_dyn.append(starting_income)
+
+        return inc_dyn
 
 
 class SocialPlanner:
@@ -109,16 +125,38 @@ class SocialPlanner:
             taxations and incomes after the redistribution.
         """
         tax_df = self.get_taxation_df(self.agents)
-        tax_df_low = tax_df[tax_df["tax"] <= tax_tresh].copy()
 
-        refound = redistribute_funds(
-            tax_df_low["income"], 
-            self.budget, 
-            decay_rate=progressive_rate
-        )
-        tax_df_low["income"] += refound
-        tax_df.loc[
-            tax_df.index.isin(tax_df_low.index.tolist()), "income"
-        ] = tax_df_low["income"]
+        if self.budget > 0:
+            tax_df_low = tax_df[tax_df["tax"] <= tax_tresh].copy()
+
+            refound = redistribute_funds(
+                tax_df_low["income"], 
+                self.budget, 
+                decay_rate=progressive_rate
+            )
+            tax_df_low["income"] += refound
+            tax_df.loc[
+                tax_df.index.isin(tax_df_low.index.tolist()), "income"
+            ] = tax_df_low["income"]
 
         return tax_df
+    
+    def get_agent_attribute(self, attribute: str) -> List[int | float | List[int | float]]:
+        return [eval(f"ag.{attribute}") for ag in self.agents]
+
+    def get_economy_df(self) -> pd.DataFrame:
+
+        ag_df = pd.DataFrame(
+            {
+                "agent": np.arange(len(self.agents)),
+                "initial_income": self.get_agent_attribute("income"),
+                "final_income": self.get_agent_attribute("available_income"),
+                "tax": self.get_agent_attribute("tax"),
+                "paid_taxes": self.get_agent_attribute("paid_taxes"),
+                "bought_goods": self.get_agent_attribute("bought_goods"),
+                "paid_prices": self.get_agent_attribute("paid_prices"),
+                "savings": self.get_agent_attribute("savings"),
+                "income_dynamic": self.get_agent_attribute("income_dynamic")
+            }
+        )
+        return ag_df
