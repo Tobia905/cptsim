@@ -52,7 +52,7 @@ At the end of the simulation we evaluate the redistribution under two different 
 
  - **Direct Income Redistribution**: we compare the pre and post redistribution income distributions and we compute the respective Lorenz curves and the gini indexes as follows: 
 
-      $$G = 1 - 2 \int_0^1 L(x)dx \approx \frac{2 \sum_{i=1}^n i x_i}{n \sum_{i=1}^n x_i} - \frac{n + 1}{n}$$
+   $$G = 1 - 2 \int_0^1 L(x)dx \approx \frac{2 \sum_{i=1}^n i x_i}{n \sum_{i=1}^n x_i} - \frac{n + 1}{n}$$
 
     Where:
     - $L(x)$ is the Lorenz curve, which represents the cumulative share of income (or wealth) as a function of the cumulative share of the population.
