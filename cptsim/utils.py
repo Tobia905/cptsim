@@ -1,4 +1,5 @@
-from typing import Callable, Dict, Any
+from typing import Callable, Dict, Any, Union
+from multiprocessing import cpu_count
 import inspect
 
 import pandas as pd
@@ -39,3 +40,8 @@ def CDF(data):
 
     # calculate the proportional values of samples
     return 1. * np.arange(len(data)) / (len(data) - 1), data_sorted
+
+
+def check_threads(num_threads: int = -1) -> Union[int, None]:
+    num_threads = cpu_count() if num_threads == -1 else num_threads
+    return num_threads

@@ -1,4 +1,5 @@
 from typing import List, Literal, Optional
+from copy import deepcopy
 
 import pandas as pd
 import numpy as np
@@ -41,7 +42,7 @@ class EconomicAgent:
         self.transfer_handling_strategy = transfer_handling_strategy
 
     def buy_consumption_good(self, price: float) -> None:
-        self.available_income -= price + (self.tax * price)
+        self.available_income -= price #+ (self.tax * price)
         self.bought_goods += 1
         self.paid_prices.append(price)
         self.paid_taxes.append(self.tax * price)
@@ -73,7 +74,7 @@ class EconomicAgent:
             starting_income = self.income - (self.saving_rate * self.income)
             for price, tax in zip(self.paid_prices, self.paid_taxes):
                 starting_income -= (price + tax)
-                inc_dyn.append(starting_income)
+                inc_dyn.append(deepcopy(starting_income))
 
         return inc_dyn
 
