@@ -50,19 +50,19 @@ The code for the taxation and redistribution functions can be found in **cptsim/
 
 At the end of the simulation we evaluate the redistribution under two different dimensions:
 
- - **Direct Income Redistribution**: we compare the pre and post redistribution income distributions and we compute the respective Lorenz curves and the gini indexes as follows: 
-
-```math
-   G = 1 - 2 \int_0^1 L(x)dx \approx \frac{2 \sum_{i=1}^n i x_i}{n \sum_{i=1}^n x_i} - \frac{n + 1}{n}
-```
+- **Direct Income Redistribution**: we compare the pre and post redistribution income distributions and we compute the respective Lorenz curves and the gini indexes as follows: 
+ 
+   ```math
+      G = 1 - 2 \int_0^1 L(x)dx \approx \frac{2 \sum_{i=1}^n i x_i}{n \sum_{i=1}^n x_i} - \frac{n + 1}{n}
+   ```
 
    Where:
-   
+
    - $L(x)$ is the Lorenz curve, which represents the cumulative share of income (or wealth) as a function of the cumulative share of the population.
     - $x_i$ represents the income of the $i$-th individual, sorted in ascending order.
     - $n$ represents the total number of individuals.
 
- - **Consumption Inequality**: here we assume that a reduction in consumption inequality, if present, can be considered as an emerging property of the system. In fact, the progressive differences in taxation for different level of incomes will reduce the amount paid for the same number of consumption goods bought by the lower income individuals and, hence, increase the amount of goods bought. To measure it we consider two dimensions:
+- **Consumption Inequality**: here we assume that a reduction in consumption inequality, if present, can be considered as an emerging property of the system. In fact, the progressive differences in taxation for different level of incomes will reduce the amount paid for the same number of consumption goods bought by the lower income individuals and, hence, increase the amount of goods bought. To measure it we consider two dimensions:
     - We use a variation of the Lorenz curve in which we relate the cumulative share of goods bought with the share of population ranked by income.
     - We do the same with the amount of tax paid for the same number of goods bought.
 
