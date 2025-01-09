@@ -41,13 +41,26 @@ class EconomicAgent:
         self.transfers = []
         self.transfer_handling_strategy = transfer_handling_strategy
 
-    def buy_consumption_good(self, price: float) -> None:
-        self.available_income -= price #+ (self.tax * price)
+    def buy_consumption_good(self, price: float, implicit_tax: bool = True) -> None:
+        # setting implicit_tax to True means that we consider it by
+        # adjusting the sampling upper bound for the price distribution
+        # by considering the taxation
+        tax = self.tax if not implicit_tax else 0
+        self.available_income -= price + (tax * price)
         self.bought_goods += 1
         self.paid_prices.append(price)
         self.paid_taxes.append(self.tax * price)
 
-    def reassing_new_income(self, new_income: int | float, transfer: Optional[int | float] = None) -> None:
+        # here we accept the possibility of over-spending (happens only if
+        # we set implicit_tax to False)
+        if self.available_income < 0:
+            self.savings += self.available_income
+
+    def reassing_new_income(
+        self, 
+        new_income: int | float, 
+        transfer: Optional[int | float] = None
+    ) -> None:
         self.income = new_income
         self.handle_redistribution(transfer=transfer)
         self.available_income = self.income * (1 - self.saving_rate)
@@ -65,6 +78,8 @@ class EconomicAgent:
 
             else:
                 self.available_income += transfer
+
+            self.transfers.append(transfer)
 
     @property
     def income_dynamic(self):
@@ -84,6 +99,14 @@ class SocialPlanner:
     def __init__(self, agents: List[EconomicAgent], budget: int | float):
         self.agents = agents
         self.budget = budget
+        self.budgets = [budget]
+        self.total_budget = budget
+
+    def reassign_new_agents_and_budget(self, new_agents: List[EconomicAgent], new_budget: int | float) -> None:
+        self.agents = new_agents
+        self.budget = new_budget
+        self.budgets.append(self.budget)
+        self.total_budget += self.budget
 
     @staticmethod
     def get_taxation_df(agents: List[EconomicAgent]) -> pd.DataFrame:
@@ -127,6 +150,8 @@ class SocialPlanner:
         """
         tax_df = self.get_taxation_df(self.agents)
 
+        # proceed with the redistribution only if the budget is
+        # above 0
         if self.budget > 0:
             tax_df_low = tax_df[tax_df["tax"] <= tax_tresh].copy()
 
@@ -135,6 +160,7 @@ class SocialPlanner:
                 self.budget, 
                 decay_rate=progressive_rate
             )
+            # assing the refound ad obtain the original income dataframe
             tax_df_low["income"] += refound
             tax_df.loc[
                 tax_df.index.isin(tax_df_low.index.tolist()), "income"
@@ -146,7 +172,13 @@ class SocialPlanner:
         return [eval(f"ag.{attribute}") for ag in self.agents]
 
     def get_economy_df(self) -> pd.DataFrame:
+        """
+        Represents the list of agents as a dataframe.
 
+        Returns:
+            ag_df (pd.DataFrame): the agent dataframe representing
+            the whole economy.
+        """
         ag_df = pd.DataFrame(
             {
                 "agent": np.arange(len(self.agents)),
