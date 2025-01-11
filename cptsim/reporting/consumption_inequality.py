@@ -7,7 +7,7 @@ from scipy.stats import rankdata
 from scipy.integrate import simpson
 from numpy.typing import ArrayLike
 
-from cptsim.agent import EconomicAgent
+from cptsim.agents.economic_agent import EconomicAgent
 from cptsim.reporting.income_inequality import gini_index_from_lorenz
 from cptsim.utils import prettify_pandas_bins
 

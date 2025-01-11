@@ -1,14 +1,17 @@
 from typing import Dict, Union, Tuple, List, Any, Optional, Literal
 import logging
+from copy import deepcopy
+from joblib import Parallel, delayed
 
 import numpy as np
 import pandas as pd
 from numpy.typing import ArrayLike
 
-from cptsim.agent import EconomicAgent, SocialPlanner
+from cptsim.agents.economic_agent import EconomicAgent
+from cptsim.agents.social_planner import SocialPlanner
 from cptsim.consumption_goods import truncated_sampling
 from cptsim.income import simulate_income
-from cptsim.utils import match_kwargs
+from cptsim.utils import match_kwargs, check_threads
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -21,6 +24,7 @@ def _compute_upper_bound(
 ) -> float:
     # set the income as upper bound if the first is
     # lower than the second
+    income = deepcopy(income)
     upper_bound_ = (
         upper_bound 
         if income > upper_bound
@@ -41,6 +45,82 @@ def _compute_refound_from_income_df(
     return refounds
 
 
+def simulate_agent(
+    n: int, 
+    inc: float, 
+    prices_distribution: Dict[str, Union[np.ndarray, Tuple, float]],
+    initial_agents: List[EconomicAgent], 
+    gov_transfer: float, 
+    constant_tax: bool = False, 
+    lower_bound: int = 1, 
+    upper_bound: int = 1000, 
+    verbose: bool = False, 
+    **kwargs: Any
+) -> Tuple[EconomicAgent, float]:
+    
+    gov_budget = 0
+    # initialize the agent
+    if not initial_agents:
+        ea = EconomicAgent(
+            income=inc, 
+            constant_tax=constant_tax, 
+            **match_kwargs(EconomicAgent, kwargs)
+        )
+
+    # use the provided list of agents
+    else:
+        ea = initial_agents[n]
+        transfer = gov_transfer[n] if gov_transfer is not None else gov_transfer
+        ea.reassing_new_income(inc, transfer=transfer)
+
+    # compute initial upper bound and sample the good price
+    upper_bound_ = _compute_upper_bound(upper_bound, ea.available_income, ea.tax)
+    good_price = truncated_sampling(
+        prices_distribution["distribution"], 
+        prices_distribution["parameters"], 
+        size=1, 
+        lower_bound=lower_bound, 
+        upper_bound=upper_bound_
+    )
+
+    # keep buying consumption goods untill possible
+    while ea.available_income >= good_price:
+        ea.buy_consumption_good(
+            price=good_price, **match_kwargs(ea.buy_consumption_good, kwargs)
+        )
+        gov_budget += ea.tax * good_price
+        # dynamically adjust the upper bound
+        upper_bound_ = _compute_upper_bound(upper_bound, ea.available_income, ea.tax)
+
+        # sample new good's price
+        if upper_bound_ > lower_bound:
+            good_price = truncated_sampling(
+                prices_distribution["distribution"], 
+                prices_distribution["parameters"], 
+                size=1, 
+                lower_bound=lower_bound, 
+                upper_bound=upper_bound_
+            )
+
+        # the available income is over, store the agent and break 
+        # the while loop
+        else:
+            if verbose:
+                logger.info(
+                    f"Agent {n}"
+                    f" | initial income: {ea.income}"
+                    f" | saved income: {ea.saving_rate * ea.income}"
+                    f" | initial available income: {ea.income * (1 - ea.saving_rate)}"
+                    f" | goods bought: {ea.bought_goods}"
+                    f" | total spending: {sum(ea.paid_prices)}"
+                    f" | total taxes paid: {sum(ea.paid_taxes)}"
+                    f" | final income: {ea.available_income}"
+                )
+            break
+
+    return ea, gov_budget
+
+
 def simulate_market(
     prices_distribution: Dict[str, Union[np.ndarray, Tuple, float]], 
     initial_incomes: Optional[ArrayLike] = None,
@@ -51,6 +131,7 @@ def simulate_market(
     upper_bound: int = 1000,
     verbose: bool = False,
     gov_transfer: Optional[ArrayLike] = None,
+    n_jobs: int = 1,
     **kwargs: Any
 ) -> Tuple[List[EconomicAgent], float]:
     """
@@ -59,7 +140,7 @@ def simulate_market(
     utill he finishes his available income. For each good, the 
     government collects taxes and increases his budget.
 
-    Args:
+     Args:
         prices_distribution (dict): dictionary representing the 
         prices distribution.
         initial_agents (ArrayLike): optional array-like of agents.
@@ -74,13 +155,16 @@ def simulate_market(
         verbose (bool): wheter to show information about the simulation
         or not.
         gov_transfer (float): the amount to be redistributed.
+        n_jobs (int): the number of jobs to use in parallelization.
 
     Returns:
         tuple: the list of agents after the process and the government
         budget. 
     """
-    gov_budget = 0
-    all_agents = []
+    # logs won't be displayed so we set verbose to False
+    if n_jobs > 1 or n_jobs == -1:
+        verbose = False
+
     # simulate all incomes if not provided as argument
     incomes = (
         simulate_income(
@@ -89,70 +173,32 @@ def simulate_market(
         if initial_incomes is None
         else initial_incomes
     )
-    # iterate over income
-    for n, inc in enumerate(incomes):
-        # initialize the agent
-        if not initial_agents:
-            ea = EconomicAgent(
-                income=inc, 
-                constant_tax=constant_tax, 
-                **match_kwargs(EconomicAgent, kwargs)
-            )
 
-        # use the provided list of agents
-        else:
-            ea = initial_agents[n]
-            transfer = gov_transfer[n] if gov_transfer is not None else gov_transfer
-            ea.reassing_new_income(inc, transfer=transfer)
-
-        # compute initial upper bound and sample the good price
-        upper_bound_ = _compute_upper_bound(
-            upper_bound, ea.available_income, ea.tax
-        )
-        good_price = truncated_sampling(
-            prices_distribution["distribution"], 
-            prices_distribution["parameters"], 
-            size=1, 
+    # check the provided number of threads
+    n_jobs = check_threads(num_threads=n_jobs)
+    # iterate over the incomes in parallel
+    results = Parallel(n_jobs=n_jobs)(
+        delayed(simulate_agent)(
+            n, 
+            inc, 
+            prices_distribution,
+            initial_agents=initial_agents, 
+            gov_transfer=gov_transfer, 
+            constant_tax=constant_tax,  
             lower_bound=lower_bound, 
-            upper_bound=upper_bound_
+            upper_bound=upper_bound, 
+            verbose=verbose, 
+            **kwargs
         )
-        # keep buying consumption goods untill possible
-        while ea.available_income >= good_price:
-            ea.buy_consumption_good(
-                price=good_price, **match_kwargs(ea.buy_consumption_good, kwargs)
-            )
-            # increse government budget with taxes
-            gov_budget += ea.tax * good_price
-            # dynamically adjust the upper bound
-            upper_bound_ = _compute_upper_bound(
-                upper_bound, ea.available_income, ea.tax
-            )
-            # sample new good's price
-            if upper_bound_ > lower_bound:
-                good_price = truncated_sampling(
-                    prices_distribution["distribution"], 
-                    prices_distribution["parameters"], 
-                    size=1, 
-                    lower_bound=lower_bound, 
-                    upper_bound=upper_bound_
-                )
+        for n, inc in enumerate(incomes)
+    )
 
-            # the available income is over, store the agent and break 
-            # the while loop
-            else:
-                if verbose:
-                    logger.info(
-                        f"Agent {n}"
-                        f" | initial income: {ea.income}"
-                        f" | goods bought: {ea.bought_goods}"
-                        f" | total spending: {sum(ea.paid_prices)}"
-                        f" | total taxes paid: {sum(ea.paid_taxes)}"
-                        f" | final income: {ea.available_income}"
-                    )
-                all_agents.append(ea)
-                break
+    # unzip results
+    all_agents, gov_budgets = zip(*results)
+    # sum all budgets gathered by the government
+    total_gov_budget = sum(gov_budgets)
 
-    return all_agents, gov_budget
+    return list(all_agents), total_gov_budget
 
 
 def simulate_market_repeated(
@@ -300,3 +346,47 @@ def simulate_market_repeated(
         final_results["gov_budgets"][step] = extra_budget
 
     return final_results, sp
+
+
+def extra_budget_loss(
+    prices_distribution: Dict[str, Union[np.ndarray, Tuple, float]],
+    agents: int = 300, 
+    min_tax: float = .15, 
+    max_tax: float = .38, 
+    heavy_tail_factor: float = 1.5, 
+    prog_rate: float = 0.00015, 
+    implicit_tax: bool = False, 
+    verbose: bool = False,
+    n_jobs: int = 5,
+    **kwargs: Any,
+) -> float:
+    
+    initial_incomes = simulate_income(
+        n=agents, **match_kwargs(simulate_income, kwargs)
+    )
+    _, gov_budget_pt = simulate_market(
+        prices_distribution,
+        initial_incomes=initial_incomes,
+        implicit_tax=implicit_tax,
+        n_jobs=n_jobs,
+        verbose=verbose,
+        min_tax=min_tax,
+        max_tax=max_tax,
+        prog_rate=prog_rate,
+        heavy_tail_factor=heavy_tail_factor,
+        **kwargs
+    )
+    _, gov_budget_ct = simulate_market(
+        prices_distribution,
+        initial_incomes=initial_incomes,
+        implicit_tax=implicit_tax,
+        n_jobs=n_jobs,
+        verbose=verbose,
+        constant_tax=True,
+        min_tax=min_tax,
+        max_tax=max_tax,
+        prog_rate=prog_rate,
+        heavy_tail_factor=heavy_tail_factor,
+        **kwargs
+    )
+    return - (gov_budget_pt - gov_budget_ct)
