@@ -166,12 +166,8 @@ def simulate_market(
         verbose = False
 
     # simulate all incomes if not provided as argument
-    incomes = (
-        simulate_income(
-            n=agents, **match_kwargs(simulate_income, kwargs)
-        )
-        if initial_incomes is None
-        else initial_incomes
+    incomes = _check_initial_incomes(
+        initial_incomes=initial_incomes, agents=agents, **kwargs
     )
 
     # check the provided number of threads
@@ -256,14 +252,9 @@ def simulate_market_repeated(
     
     # we need to generate income outside the one step simulation
     # to insure coherence with incomes and agents
-    if initial_incomes is None:
-        initial_incomes = (
-            simulate_income(
-                n=agents, **match_kwargs(simulate_income, kwargs)
-            )
-            if initial_incomes is None
-            else initial_incomes
-        )
+    initial_incomes = _check_initial_incomes(
+        initial_incomes=initial_incomes, agents=agents, **kwargs
+    )
 
     # simulating the first step: the market process takes place 
     # and the social planner redistributes the extra-budget 
@@ -350,6 +341,7 @@ def simulate_market_repeated(
 
 def extra_budget_loss(
     prices_distribution: Dict[str, Union[np.ndarray, Tuple, float]],
+    initial_incomes: Optional[ArrayLike] = None,
     agents: int = 300, 
     min_tax: float = .15, 
     max_tax: float = .38, 
@@ -361,13 +353,13 @@ def extra_budget_loss(
     **kwargs: Any,
 ) -> float:
     
-    initial_incomes = simulate_income(
-        n=agents, **match_kwargs(simulate_income, kwargs)
+    initial_incomes = _check_initial_incomes(
+        initial_incomes=initial_incomes, agents=agents, **kwargs
     )
     _, gov_budget_pt = simulate_market(
         prices_distribution,
         initial_incomes=initial_incomes,
-        implicit_tax=implicit_tax,
+        implicit_tax=False,
         n_jobs=n_jobs,
         verbose=verbose,
         min_tax=min_tax,
@@ -389,4 +381,20 @@ def extra_budget_loss(
         heavy_tail_factor=heavy_tail_factor,
         **kwargs
     )
-    return - (gov_budget_pt - gov_budget_ct)
+    return gov_budget_pt - gov_budget_ct
+
+
+def _check_initial_incomes(
+    initial_incomes: Optional[ArrayLike] = None, 
+    agents: int = 5000,
+    **kwargs
+) -> np.ndarray:
+    
+    initial_incomes = (
+        simulate_income(
+            n=agents, **match_kwargs(simulate_income, kwargs)
+        )
+        if initial_incomes is None
+        else initial_incomes
+    )
+    return initial_incomes

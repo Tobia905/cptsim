@@ -16,6 +16,7 @@ class EconomicAgent:
         prog_rate: float = 0.0003,
         saving_rate: float = .20,
         constant_tax: bool = False,
+        const_tax_amount: float = .22,
         transfer_handling_strategy: Literal["save", "spend"] = "save"
     ):
         if transfer_handling_strategy not in ["save", "spend"]:
@@ -28,7 +29,7 @@ class EconomicAgent:
             progressive_tax(
                 self.income, min_tax, max_tax, min_inc, max_inc, k=prog_rate
             )
-            if not constant_tax else .22
+            if not constant_tax else const_tax_amount
         )
         self.available_income = self.income * (1 - self.saving_rate)
         self.savings = self.income * self.saving_rate
