@@ -1,137 +1,140 @@
-from typing import Optional, Dict, Union, Tuple, Any
-from functools import partial
+from typing import Dict, Union, Tuple, Any, List
+from typing_extensions import Self
 
-import optuna
-import torch
 import numpy as np
-from optuna.study.study import Study
-from optuna.integration import BoTorchSampler
-from gpytorch.means import ConstantMean
-from gpytorch.models import ExactGP
-from gpytorch.kernels import RBFKernel
-from gpytorch.likelihoods import GaussianLikelihood
-from gpytorch.distributions import MultivariateNormal
-from gpytorch.mlls import ExactMarginalLogLikelihood
-from torch.optim import Adam
+import matplotlib.pyplot as plt
+from sklearn.utils.validation import NotFittedError
+from skopt.utils import use_named_args
+from skopt import gp_minimize
+from skopt.space import Real
 
 from cptsim.market import extra_budget_loss
 from cptsim.income import simulate_income
-
-
-class GPWithNoise(ExactGP):
-    def __init__(
-        self, 
-        x_train: torch.Tensor, 
-        y_train: torch.Tensor, 
-        likelihood: GaussianLikelihood
-    ):
-        super(GPWithNoise, self).__init__(x_train, y_train, likelihood)
-        
-        # Use a constant mean to model non-zero noise mean
-        self.mean_module = ConstantMean()
-        
-        # Use an RBF kernel for smoothness
-        self.covar_module = RBFKernel()
-    
-    def forward(self, x: torch.Tensor) -> MultivariateNormal:
-        mean_x = self.mean_module(x)
-        covar_x = self.covar_module(x)
-        return torch.distributions.MultivariateNormal(mean_x, covar_x)
+from cptsim.tax import progressive_tax
 
 
 class BayesianExtrabudgetOptimizer:
 
     def __init__(
-        self, 
+        self: Self,
         prices_distribution: Dict[str, Union[np.ndarray, Tuple, float]],
         agents_per_step: int = 1000,
-        n_startup_trials: int = 10, 
+        min_income=500,
+        max_income=15000,
+        heavy_tail_factor=1.5,
         random_state: int = None,
         min_tax_range: Tuple[float, float] = (0.15, 0.20),
         max_tax_range: Tuple[float, float] = (0.30, 0.38),
         prog_rate_range: Tuple[float, float] = (0.0001, 0.001),
-        **ml_estimator_kwargs: Any
-    ):
-        
-        gp_model = partial(self.create_gp_model, **ml_estimator_kwargs)
+        n_jobs: int = -1
+    ) -> None:
 
-        sampler = BoTorchSampler(
-            gp_model=gp_model, # Custom GP model
-            n_startup_trials=n_startup_trials, # Number of random trials before using GP
-            seed=random_state # Random seed for reproducibility
-        )
-        self.study = optuna.create_study(sampler=sampler)
         self.prices_distribution = prices_distribution
         self.agents_per_step = agents_per_step
-        self.min_tax_range = min_tax_range
-        self.max_tax_range = max_tax_range
-        self.prog_rate_range = prog_rate_range
+        self.random_state = random_state
+        self.n_jobs = n_jobs
 
-    def create_gp_model(self, x_train: torch.Tensor, y_train: torch.Tensor):
-        likelihood = GaussianLikelihood()
+        self.min_income = min_income
+        self.max_income = max_income
+        self.heavy_tail_factor = heavy_tail_factor
 
-        # Create and fit the GP model
-        gp = GPWithNoise(x_train, y_train, likelihood)
-        mll = ExactMarginalLogLikelihood(likelihood, gp)
-        self.fit_gpytorch_model(mll)
-        return gp
-    
-    @staticmethod
-    def fit_gpytorch_model(
-        mll: ExactMarginalLogLikelihood, 
-        epochs: int = 50, 
-        learning_rate: float = 0.1
-    ) -> None:
-        """
-        Fits a GPyTorch model using the Adam optimizer.
+        self.search_space = [
+            # Range for min tax
+            Real(min_tax_range[0], min_tax_range[1], name="min_tax"),
+            # Range for max tax
+            Real(max_tax_range[0], max_tax_range[1], name="max_tax"),
+            # Range for the progressive rate
+            Real(prog_rate_range[0], prog_rate_range[1], name="prog_rate")
+        ]
 
-        Args:
-            mll (ExactMarginalLogLikelihood): Marginal log-likelihood of the GP model.
-            epochs (int): the steps for the training loop
-            learning_rate (float): 
-        """
-        # Use the model and likelihood from the MLL
-        model = mll.model
+    def run(
+        self: Self,
+        n_startup_trials: int = 10,
+        iterations: int = 50,
+        noise: str = "gaussian",
+        aq_function: str = "gp_hedge",
+        **optimizer_kwargs: Any
+    ) -> Self:
 
-        # set the model in training mode
-        model.train()
-        mll.train()
-
-        # define Adam optimizer
-        optimizer = Adam(model.parameters(), lr=learning_rate)
-
-        # Training loop: maximize the marginal likelihood
-        for _ in range(epochs):
-            optimizer.zero_grad()
-            output = model(model.train_inputs[0])
-            loss = -mll(output, model.train_targets)
-            loss.backward()
-            optimizer.step()
-
-    def objective_function(self, trial: optuna.trial.Trial) -> float:
-        # Suggest parameters (minimum tax, maximum tax, growth rate)
-        min_tax = trial.suggest_float(
-            "min_tax", self.min_tax_range[0], self.min_tax_range[1]
+        incomes = simulate_income(
+            n=self.agents_per_step,
+            min_income=self.min_income,
+            max_income=self.max_income,
+            heavy_tail_factor=self.heavy_tail_factor
         )
-        max_tax = trial.suggest_float(
-            "max_tax", self.max_tax_range[0], self.max_tax_range[1]
+
+        @use_named_args(self.search_space)
+        def objective(
+            min_tax: float,
+            max_tax: float,
+            prog_rate: float,
+            **kwargs
+        ) -> float:
+
+            extrabudget = extra_budget_loss(
+                self.prices_distribution,
+                initial_incomes=incomes,
+                min_tax=min_tax,
+                max_tax=max_tax,
+                prog_rate=prog_rate,
+                **kwargs
+            )
+            return -extrabudget[0]
+
+        self.result_ = gp_minimize(
+            func=objective,
+            dimensions=self.search_space,
+            n_calls=iterations, # Number of function evaluations
+            n_random_starts=n_startup_trials, # Number of random initial points
+            acq_func=aq_function, # Acquisition function to balance exploitation/exploration
+            noise=noise, # Noise level in the optimization
+            random_state=self.random_state,
+            n_jobs=self.n_jobs,
+            **optimizer_kwargs
         )
-        prog_rate = trial.suggest_float(
-            "prog_rate", self.prog_rate_range[0], self.prog_rate_range[1]
+        return self
+
+    def to_dict(self) -> Dict[str, Any]:
+        self.__check_is_fitted()
+        return self.result_.specs
+
+    def plot_optimal_taxation(self: Self) -> None:
+        self.__check_is_fitted()
+        incomes = simulate_income(
+            n=self.agents_per_step,
+            min_income=self.min_income,
+            max_income=self.max_income,
+            heavy_tail_factor=self.heavy_tail_factor
         )
-        
-        incomes = simulate_income(n=self.agents_per_step)
-        # Run the simulation for the given parameters
-        extrabudget = extra_budget_loss(
-            self.prices_distribution,
-            initial_incomes=incomes,
-            min_tax=min_tax, 
-            max_tax=max_tax, 
-            prog_rate=prog_rate
+
+        min_t, max_t, prog_r = self.best_params
+        cons_tax = progressive_tax(
+            incomes, min_t, max_t, self.min_income, self.max_income, k=prog_r
         )
-        
-        return extrabudget
-    
-    def run(self, n_trials: int = 100) -> Study:
-        _ = self.study.optimize(n_trials=n_trials)
-        return self.study
+        plt.axhline(.22, color="r", zorder=2)
+        plt.plot(sorted(incomes), sorted(cons_tax), c="C0", zorder=1)
+        plt.legend(["Constant Tax", "Optimal Progressive Tax"])
+        plt.title("Optimal Progressive Consumption Tax")
+        plt.xlabel("Post-Taxation Monthly Income")
+        plt.ylabel("Tax")
+        plt.grid(alpha=.3, zorder=-2)
+        plt.show()
+
+    def __check_is_fitted(self: Self) -> None:
+        if not hasattr(self, "result_"):
+            raise NotFittedError
+
+    @property
+    def best_params(self: Self) -> List[float]:
+        self.__check_is_fitted()
+        return self.result_.x
+
+    @property
+    def trials(self: Self) -> List[List[float]]:
+        self.__check_is_fitted()
+        return self.result_.x_iters
+
+    @property
+    def min_obj(self: Self) -> float:
+        self.__check_is_fitted()
+        return self.result_.fun
