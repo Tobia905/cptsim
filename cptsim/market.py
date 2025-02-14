@@ -140,7 +140,7 @@ def simulate_market(
     utill he finishes his available income. For each good, the 
     government collects taxes and increases his budget.
 
-     Args:
+    Args:
         prices_distribution (dict): dictionary representing the 
         prices distribution.
         initial_agents (ArrayLike): optional array-like of agents.

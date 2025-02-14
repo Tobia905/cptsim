@@ -3,6 +3,7 @@ from typing_extensions import Self
 
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.integrate import simpson
 from sklearn.utils.validation import NotFittedError
 from skopt.utils import use_named_args
 from skopt import gp_minimize
@@ -24,8 +25,9 @@ class BayesianExtrabudgetOptimizer:
         heavy_tail_factor=1.5,
         random_state: int = None,
         min_tax_range: Tuple[float, float] = (0.15, 0.20),
-        max_tax_range: Tuple[float, float] = (0.30, 0.38),
-        prog_rate_range: Tuple[float, float] = (0.0001, 0.001),
+        max_tax_range: Tuple[float, float] = (0.25, 0.38),
+        prog_rate_range: Tuple[float, float] = (0.0003, 0.001),
+        constant_tax: float = 0.22,
         n_jobs: int = -1
     ) -> None:
 
@@ -33,6 +35,7 @@ class BayesianExtrabudgetOptimizer:
         self.agents_per_step = agents_per_step
         self.random_state = random_state
         self.n_jobs = n_jobs
+        self.constant_tax = constant_tax
 
         self.min_income = min_income
         self.max_income = max_income
@@ -71,6 +74,7 @@ class BayesianExtrabudgetOptimizer:
             **kwargs
         ) -> float:
 
+            # define the extrabudget and the taxation functions
             extrabudget = extra_budget_loss(
                 self.prices_distribution,
                 initial_incomes=incomes,
@@ -79,7 +83,23 @@ class BayesianExtrabudgetOptimizer:
                 prog_rate=prog_rate,
                 **kwargs
             )
-            return -extrabudget[0]
+            tax = progressive_tax(
+                incomes, 
+                min_tax, 
+                max_tax, 
+                self.min_income, 
+                self.max_income,
+                k=prog_rate
+            )
+            # the final loss is the extrabudget plus the integral of the 
+            # taxation function for all values less than the constant tax
+            # with the mean of the prices' distribution used as a multiplying
+            # constant
+            return (
+                - extrabudget[0] 
+                - simpson(np.sort(tax[tax < self.constant_tax]))
+                * np.mean(self.prices_distribution["samples"])
+            )
 
         self.result_ = gp_minimize(
             func=objective,
@@ -100,6 +120,10 @@ class BayesianExtrabudgetOptimizer:
 
     def plot_optimal_taxation(self: Self) -> None:
         self.__check_is_fitted()
+
+        fig, ax = plt.subplots()
+
+        tax = ax.twinx()
         incomes = simulate_income(
             n=self.agents_per_step,
             min_income=self.min_income,
@@ -111,13 +135,28 @@ class BayesianExtrabudgetOptimizer:
         cons_tax = progressive_tax(
             incomes, min_t, max_t, self.min_income, self.max_income, k=prog_r
         )
-        plt.axhline(.22, color="r", zorder=2)
-        plt.plot(sorted(incomes), sorted(cons_tax), c="C0", zorder=1)
-        plt.legend(["Constant Tax", "Optimal Progressive Tax"])
-        plt.title("Optimal Progressive Consumption Tax")
-        plt.xlabel("Post-Taxation Monthly Income")
-        plt.ylabel("Tax")
-        plt.grid(alpha=.3, zorder=-2)
+        tax.hist(
+            incomes, 
+            bins=50, 
+            color="lightgrey", 
+            edgecolor="k", 
+            zorder=0,
+        )
+        tax.set_zorder(1)
+        tax.set_ylabel("# of Individuals")
+        ax.set_zorder(2)
+        ax.axhline(.22, color="r", zorder=2)
+        ax.plot(sorted(incomes), sorted(cons_tax), c="C0", zorder=1)
+        ax.legend(["Constant Tax", "Optimal Progressive Tax"])
+        ax.set_title("Optimal Progressive Consumption Tax and Income Distribution")
+        ax.set_xlabel("Post-Taxation Monthly Income")
+        ax.set_ylabel("Tax")
+        ax.grid(alpha=.3, zorder=-2)
+
+        ax.set_frame_on(False)
+
+        fig.set_tight_layout(True)
+
         plt.show()
 
     def __check_is_fitted(self: Self) -> None:
